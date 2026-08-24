@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows.Input;
+using LibTreeMapView.Core;
 using LibTreeMapView.Core.Coff;
 using LibTreeMapView.Core.Model;
 using LibTreeMapView.Core.Tree;
@@ -19,6 +21,8 @@ public sealed class MainViewModel : ObservableObject
             [DevicePlatform.WinUI] = [".lib"],
         });
 
+    private readonly LibraryLoader loader;
+
     private LibraryInfo? library;
     private TreeNode? fullTree;
     private TreeNode? displayRoot;
@@ -32,15 +36,18 @@ public sealed class MainViewModel : ObservableObject
     private bool isLoading;
     private int busyCount;
     private int rebuildGeneration;
+    private TimeSpan lastRebuildElapsed;
     private string statusMessage = ".lib ファイルを開いてください。ウィンドウにドラッグ＆ドロップもできます。";
     private string? errorMessage;
 
-    public MainViewModel()
+    public MainViewModel(LibraryLoader loader)
     {
+        this.loader = loader;
         groupingOption = GroupingOptions[0];
 
         OpenCommand = new Command(async () => await OpenAsync(), () => !IsBusy);
         ReloadCommand = new Command(async () => await ReloadAsync(), () => !IsBusy && library is not null);
+        ClearCacheCommand = new Command(async () => await ClearCacheAsync(), () => !IsBusy && loader.Cache is not null);
         ZoomOutCommand = new Command(ZoomOut, () => displayRoot?.Parent is not null);
         ResetZoomCommand = new Command(ResetZoom, () => displayRoot is not null && !ReferenceEquals(displayRoot, fullTree));
         NavigateCommand = new Command<TreeNode>(Navigate);
@@ -79,6 +86,27 @@ public sealed class MainViewModel : ObservableObject
     public ICommand NavigateCommand { get; }
 
     public ICommand SelectCommand { get; }
+
+    public ICommand ClearCacheCommand { get; }
+
+    /// <summary>解析結果のキャッシュを使うかどうか。切ると常に .lib を読み直す。</summary>
+    public bool UseCache
+    {
+        get => loader.UseCache;
+        set
+        {
+            if (loader.UseCache != value)
+            {
+                loader.UseCache = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    /// <summary>キャッシュの保存先 (ツールチップ表示用)。</summary>
+    public string CacheLocationText => loader.Cache is { } cache
+        ? $"キャッシュの保存先: {cache.Directory}"
+        : "キャッシュは無効です";
 
     public LibraryInfo? Library
     {
@@ -288,15 +316,25 @@ public sealed class MainViewModel : ObservableObject
 
         try
         {
-            LibraryInfo info = await Task.Run(() => LibReader.Read(path));
+            LibraryLoadResult result = await Task.Run(() => loader.Load(path));
+            LibraryInfo info = result.Library;
 
             Library = info;
             SelectedNode = null;
             HoveredNode = null;
             await RebuildAsync(resetZoom: true);
-            StatusMessage = info.Warnings.Count > 0
-                ? $"{info.FileName} を読み込みました ({info.Warnings.Count} 件の警告)"
-                : $"{info.FileName} を読み込みました";
+
+            string source = result.FromCache ? "キャッシュ" : "解析";
+            string warnings = info.Warnings.Count > 0 ? $" ／ {info.Warnings.Count} 件の警告" : string.Empty;
+            StatusMessage = $"{info.FileName} を読み込みました " +
+                            $"({source} {result.Elapsed.TotalMilliseconds:F0} ms ＋ 表示の組み立て {lastRebuildElapsed.TotalMilliseconds:F0} ms)" +
+                            warnings;
+
+            if (!result.FromCache)
+            {
+                // 保存で表示を待たせないよう、描画したあとに書き出す。
+                _ = SaveCacheAsync(result);
+            }
         }
         catch (Exception ex)
         {
@@ -316,6 +354,38 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public Task ReloadAsync() => library is null ? Task.CompletedTask : LoadAsync(library.FilePath);
+
+    private async Task SaveCacheAsync(LibraryLoadResult result)
+    {
+        bool saved = await Task.Run(() => loader.SaveToCache(result));
+
+        // 保存中に別のライブラリへ切り替わっていたら、そのメッセージを上書きしない。
+        if (saved && ReferenceEquals(library, result.Library))
+        {
+            StatusMessage += " ／ キャッシュに保存しました";
+        }
+    }
+
+    private async Task ClearCacheAsync()
+    {
+        if (loader.Cache is not { } cache)
+        {
+            return;
+        }
+
+        BeginBusy();
+        try
+        {
+            int removed = await Task.Run(cache.Clear);
+            StatusMessage = removed > 0
+                ? $"キャッシュを {removed} 件消去しました。"
+                : "消去できるキャッシュはありませんでした。";
+        }
+        finally
+        {
+            EndBusy();
+        }
+    }
 
     /// <summary>タイルをダブルクリックしたときのズームイン。</summary>
     public void ZoomInto(TreeNode node)
@@ -381,7 +451,9 @@ public sealed class MainViewModel : ObservableObject
 
         try
         {
+            long started = Stopwatch.GetTimestamp();
             TreeNode tree = await Task.Run(() => TreeBuilder.Build(target, options));
+            lastRebuildElapsed = Stopwatch.GetElapsedTime(started);
 
             if (generation != rebuildGeneration || !ReferenceEquals(library, target))
             {
@@ -605,6 +677,7 @@ public sealed class MainViewModel : ObservableObject
     {
         (OpenCommand as Command)?.ChangeCanExecute();
         (ReloadCommand as Command)?.ChangeCanExecute();
+        (ClearCacheCommand as Command)?.ChangeCanExecute();
         (ZoomOutCommand as Command)?.ChangeCanExecute();
         (ResetZoomCommand as Command)?.ChangeCanExecute();
     }

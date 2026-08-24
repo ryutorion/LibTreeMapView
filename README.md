@@ -1,4 +1,6 @@
-# Lib Tree Map View
+# LibTreeMapView
+
+AIに生成させたコードで何も精査していない状態のため、利用する場合は自己責任でお願いいたします。
 
 C++ の静的ライブラリ (`.lib`) を読み込み、**セクション単位のサイズ**をツリーマップで可視化する Windows デスクトップアプリです。
 Visual Studio 2026 / .NET 10 / .NET MAUI で作られています。

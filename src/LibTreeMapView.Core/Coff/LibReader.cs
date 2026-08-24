@@ -56,6 +56,7 @@ public static class LibReader
 
         int offset = CoffConstants.ArchiveMagicLength;
         int memberIndex = 0;
+        int elfMemberCount = 0;
 
         while (offset + CoffConstants.MemberHeaderSize <= data.Length)
         {
@@ -95,14 +96,24 @@ public static class LibReader
             else
             {
                 string name = ResolveMemberName(rawName, longNames);
-                try
+
+                if (IsElf(body))
                 {
-                    objects.Add(ParseMember(body, name, memberSize));
+                    // GNU ar のライブラリ。署名は同じだがメンバーは COFF ではない。
+                    elfMemberCount++;
+                    objects.Add(CreateUnknownMember(name, memberSize, "ELF 形式のオブジェクトのため解析できません。"));
                 }
-                catch (Exception ex) when (ex is not LibFormatException)
+                else
                 {
-                    warnings.Add($"{name} の解析に失敗しました: {ex.Message}");
-                    objects.Add(CreateUnknownMember(name, memberSize, ex.Message));
+                    try
+                    {
+                        objects.Add(ParseMember(body, name, memberSize));
+                    }
+                    catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException or OverflowException)
+                    {
+                        warnings.Add($"{name} の解析に失敗しました: {ex.Message}");
+                        objects.Add(CreateUnknownMember(name, memberSize, ex.Message));
+                    }
                 }
             }
 
@@ -111,6 +122,11 @@ public static class LibReader
             {
                 offset++; // メンバーは 2 バイト境界に整列する
             }
+        }
+
+        if (elfMemberCount > 0)
+        {
+            warnings.Add($"ELF 形式のメンバーが {elfMemberCount} 個ありました。GNU ar のライブラリ (.a) は解析対象外です。");
         }
 
         if (objects.Count == 0)
@@ -163,7 +179,7 @@ public static class LibReader
         if (sig1 == 0 && sig2 == 0xFFFF && body.Length >= 6)
         {
             ushort version = BinaryPrimitives.ReadUInt16LittleEndian(body[4..]);
-            if (version >= 2 && body.Length >= CoffConstants.BigObjHeaderSize)
+            if (version >= 2 && body.Length >= CoffConstants.BigObjHeaderSize && IsBigObj(body))
             {
                 return ParseCoff(body, name, memberSize, bigObj: true);
             }
@@ -257,7 +273,8 @@ public static class LibReader
         // 再配置数が 65535 を超える場合、実数は最初の再配置レコードの VirtualAddress に入る。
         if ((characteristics & CoffConstants.ScnLnkNRelocOvfl) != 0 &&
             relocationCount == 0xFFFF &&
-            pointerToRelocations + 4 <= (uint)body.Length)
+            body.Length >= 4 &&
+            pointerToRelocations <= (uint)(body.Length - 4))
         {
             relocationCount = (int)Math.Min(
                 BinaryPrimitives.ReadUInt32LittleEndian(body[(int)pointerToRelocations..]),
@@ -334,6 +351,12 @@ public static class LibReader
     private static long DecodeBase64Offset(string text)
     {
         const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+        if (text.Length == 0)
+        {
+            return -1;
+        }
+
         long value = 0;
         foreach (char c in text)
         {
@@ -394,6 +417,13 @@ public static class LibReader
             ImportDllName = dllName,
         };
     }
+
+    private static bool IsElf(ReadOnlySpan<byte> body) =>
+        body.Length >= 4 && body[0] == 0x7F && body[1] == (byte)'E' && body[2] == (byte)'L' && body[3] == (byte)'F';
+
+    /// <summary>ANON_OBJECT_HEADER_BIGOBJ かどうかを ClassID で確かめる。</summary>
+    private static bool IsBigObj(ReadOnlySpan<byte> body) =>
+        body.Slice(12, CoffConstants.BigObjClassId.Length).SequenceEqual(CoffConstants.BigObjClassId);
 
     private static ObjectFileInfo CreateSpecialMember(string name, long memberSize) =>
         CreateOpaqueMember(name, memberSize, ObjectFileKind.Unknown, "(アーカイブメタデータ)", SectionKind.Metadata);

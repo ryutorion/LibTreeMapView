@@ -32,6 +32,7 @@ public sealed class TreeNode
         Section = section;
         ObjectFile = objectFile;
         Size = children is { Count: > 0 } ? children.Sum(c => c.Size) : size;
+        LeafCount = Children.Count == 0 ? 1 : Children.Sum(c => c.LeafCount);
 
         foreach (TreeNode child in Children)
         {
@@ -74,8 +75,8 @@ public sealed class TreeNode
         }
     }
 
-    /// <summary>葉の総数。</summary>
-    public int LeafCount => IsLeaf ? 1 : Children.Sum(c => c.LeafCount);
+    /// <summary>葉の総数。構築時に数えるので参照は O(1)。</summary>
+    public int LeafCount { get; }
 
     /// <summary>ルートからこのノードまでのパス (パンくず用、ルートを含む)。</summary>
     public IReadOnlyList<TreeNode> PathFromRoot

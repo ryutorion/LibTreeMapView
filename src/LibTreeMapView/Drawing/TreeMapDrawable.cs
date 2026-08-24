@@ -36,13 +36,23 @@ public sealed class TreeMapDrawable : IDrawable
     /// <summary>直前に描画したレイアウト。ヒットテストは必ずこれを使う。</summary>
     public TreeMapLayoutResult Layout { get; private set; } = TreeMapLayoutResult.Empty;
 
+    private TreeNode? layoutRoot;
+    private LayoutRect layoutBounds;
+
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
         canvas.FillColor = IsDarkTheme ? DarkBackground : LightBackground;
         canvas.FillRectangle(dirtyRect);
 
         var bounds = new LayoutRect(dirtyRect.X + 1, dirtyRect.Y + 1, dirtyRect.Width - 2, dirtyRect.Height - 2);
-        Layout = TreeMapLayout.Layout(Root, bounds, layoutOptions);
+
+        // ホバーのたびに再配置すると重いので、対象と大きさが変わらない間は前回の結果を使い回す。
+        if (!ReferenceEquals(layoutRoot, Root) || layoutBounds != bounds)
+        {
+            Layout = TreeMapLayout.Layout(Root, bounds, layoutOptions);
+            layoutRoot = Root;
+            layoutBounds = bounds;
+        }
 
         if (Layout.Tiles.Count == 0)
         {

@@ -20,7 +20,6 @@ internal static class CoffConstants
     public const uint ScnCntInitializedData = 0x00000040;
     public const uint ScnCntUninitializedData = 0x00000080;
     public const uint ScnLnkInfo = 0x00000200;
-    public const uint ScnLnkRemove = 0x00000800;
     public const uint ScnLnkComdat = 0x00001000;
     public const uint ScnLnkNRelocOvfl = 0x01000000;
     public const uint ScnMemDiscardable = 0x02000000;

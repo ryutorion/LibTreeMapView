@@ -46,6 +46,10 @@ public partial class MainPage : ContentPage
             app.RequestedThemeChanged -= OnRequestedThemeChanged;
         }
 
+        filterDebounce?.Cancel();
+        filterDebounce?.Dispose();
+        filterDebounce = null;
+
         base.OnDisappearing();
     }
 
@@ -101,17 +105,24 @@ public partial class MainPage : ContentPage
         Point? position = e.GetPosition(TreeMapView);
         TreeMapTile? tile = HitTest(position);
 
-        viewModel.HoveredNode = tile?.Node;
-
         if (tile is null || position is not { } point)
         {
+            viewModel.HoveredNode = null;
             HideTooltip();
             return;
         }
 
         drawable.HoverPoint = new PointF((float)point.X, (float)point.Y);
         drawable.HoverLines = BuildTooltipLines(tile.Node);
-        TreeMapView.Invalidate();
+
+        // ホバー先が変わったときは HighlightChanged 経由で再描画されるので、二重に呼ばない。
+        bool hoverChanged = !ReferenceEquals(viewModel.HoveredNode, tile.Node);
+        viewModel.HoveredNode = tile.Node;
+
+        if (!hoverChanged)
+        {
+            TreeMapView.Invalidate();
+        }
     }
 
     private void OnPointerExited(object? sender, PointerEventArgs e)
@@ -153,6 +164,11 @@ public partial class MainPage : ContentPage
 
     private void HideTooltip()
     {
+        if (drawable.HoverPoint is null && drawable.HoverLines is null)
+        {
+            return;
+        }
+
         drawable.HoverPoint = null;
         drawable.HoverLines = null;
         TreeMapView.Invalidate();

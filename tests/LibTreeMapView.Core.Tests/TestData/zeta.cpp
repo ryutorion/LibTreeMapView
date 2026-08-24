@@ -1,0 +1,3 @@
+// /GL (LTCG) ????????????????????
+double zeta_scale(double x) { return x * 2.5; }
+int zeta_count(const int* v, int n) { int s = 0; for (int i = 0; i < n; ++i) s += v[i]; return s; }

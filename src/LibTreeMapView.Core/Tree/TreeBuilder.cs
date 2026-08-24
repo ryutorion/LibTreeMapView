@@ -26,7 +26,7 @@ public sealed record TreeBuildOptions
     /// <summary>.bss など、ファイル上に実体を持たないセクションを含める。</summary>
     public bool IncludeUninitialized { get; init; } = true;
 
-    /// <summary>オブジェクト名／セクション名の部分一致フィルター。</summary>
+    /// <summary>オブジェクトファイル名の部分一致フィルター (大文字小文字は区別しない)。</summary>
     public string? Filter { get; init; }
 }
 

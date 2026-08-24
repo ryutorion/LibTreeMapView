@@ -15,7 +15,8 @@ public sealed class MainViewModel : ObservableObject
     private static readonly FilePickerFileType LibFileType = new(
         new Dictionary<DevicePlatform, IEnumerable<string>>
         {
-            [DevicePlatform.WinUI] = [".lib", ".a"],
+            // GNU ar の .a も署名は同じだがメンバーは ELF なので対象外。
+            [DevicePlatform.WinUI] = [".lib"],
         });
 
     private LibraryInfo? library;
@@ -28,6 +29,9 @@ public sealed class MainViewModel : ObservableObject
     private bool includeUninitialized = true;
     private string filterText = string.Empty;
     private bool isBusy;
+    private bool isLoading;
+    private int busyCount;
+    private int rebuildGeneration;
     private string statusMessage = ".lib ファイルを開いてください。ウィンドウにドラッグ＆ドロップもできます。";
     private string? errorMessage;
 
@@ -155,7 +159,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (value is not null && SetProperty(ref groupingOption, value))
             {
-                RebuildTree();
+                QueueRebuild();
             }
         }
     }
@@ -167,7 +171,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref includeMetadata, value))
             {
-                RebuildTree();
+                QueueRebuild();
             }
         }
     }
@@ -179,7 +183,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref includeUninitialized, value))
             {
-                RebuildTree();
+                QueueRebuild();
             }
         }
     }
@@ -191,7 +195,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref filterText, value))
             {
-                RebuildTree();
+                QueueRebuild();
             }
         }
     }
@@ -272,12 +276,13 @@ public sealed class MainViewModel : ObservableObject
 
     public async Task LoadAsync(string path)
     {
-        if (IsBusy)
+        if (isLoading)
         {
             return;
         }
 
-        IsBusy = true;
+        isLoading = true;
+        BeginBusy();
         ErrorMessage = null;
         StatusMessage = $"{Path.GetFileName(path)} を解析中…";
 
@@ -288,7 +293,7 @@ public sealed class MainViewModel : ObservableObject
             Library = info;
             SelectedNode = null;
             HoveredNode = null;
-            RebuildTree(resetZoom: true);
+            await RebuildAsync(resetZoom: true);
             StatusMessage = info.Warnings.Count > 0
                 ? $"{info.FileName} を読み込みました ({info.Warnings.Count} 件の警告)"
                 : $"{info.FileName} を読み込みました";
@@ -305,7 +310,8 @@ public sealed class MainViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            isLoading = false;
+            EndBusy();
         }
     }
 
@@ -344,7 +350,14 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private void RebuildTree(bool resetZoom = true)
+    /// <summary>表示オプションが変わったときの作り直し。結果を待たずに戻る。</summary>
+    private void QueueRebuild() => _ = RebuildAsync(resetZoom: false);
+
+    /// <summary>
+    /// ツリーを組み立て直す。大きなライブラリでは時間がかかるので UI スレッドでは動かさない。
+    /// 途中で新しい要求が来た場合、古い結果は捨てる。
+    /// </summary>
+    private async Task RebuildAsync(bool resetZoom)
     {
         if (library is null)
         {
@@ -353,25 +366,62 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        fullTree = TreeBuilder.Build(library, new TreeBuildOptions
+        int generation = ++rebuildGeneration;
+        LibraryInfo target = library;
+        var options = new TreeBuildOptions
         {
             Mode = groupingOption.Mode,
             IncludeMetadata = includeMetadata,
             IncludeUninitialized = includeUninitialized,
             Filter = filterText,
-        });
+        };
 
-        SelectedNode = null;
-        HoveredNode = null;
+        TreeNode? previousRoot = displayRoot;
+        BeginBusy();
 
-        if (resetZoom || displayRoot is null)
+        try
         {
-            DisplayRoot = fullTree;
+            TreeNode tree = await Task.Run(() => TreeBuilder.Build(target, options));
+
+            if (generation != rebuildGeneration || !ReferenceEquals(library, target))
+            {
+                return; // より新しい要求が走っている、または別のライブラリに切り替わった
+            }
+
+            fullTree = tree;
+            SelectedNode = null;
+            HoveredNode = null;
+
+            DisplayRoot = resetZoom || previousRoot is null
+                ? tree
+                // 同じ名前のノードが残っていればズーム位置を保つ。
+                : FindByPath(tree, previousRoot) ?? tree;
         }
-        else
+        catch (Exception ex)
         {
-            // 同じ名前のノードが残っていればズーム位置を保つ。
-            DisplayRoot = FindByPath(fullTree, displayRoot) ?? fullTree;
+            if (generation == rebuildGeneration)
+            {
+                ErrorMessage = $"表示の組み立てに失敗しました: {ex.Message}";
+            }
+        }
+        finally
+        {
+            EndBusy();
+        }
+    }
+
+    private void BeginBusy()
+    {
+        busyCount++;
+        IsBusy = true;
+    }
+
+    private void EndBusy()
+    {
+        busyCount = Math.Max(0, busyCount - 1);
+        if (busyCount == 0)
+        {
+            IsBusy = false;
         }
     }
 
@@ -422,7 +472,7 @@ public sealed class MainViewModel : ObservableObject
         {
             RankedItems.Add(new RankedItem(
                 rank++,
-                LeafTitle(leaf),
+                leaf.Name,
                 LeafSubtitle(leaf),
                 ByteSize.Format(leaf.Size),
                 ByteSize.FormatPercent(leaf.Size, total),
@@ -541,11 +591,6 @@ public sealed class MainViewModel : ObservableObject
             }
         }
     }
-
-    private static string LeafTitle(TreeNode leaf) =>
-        leaf.Section is { } section && leaf.ObjectFile is { } obj && leaf.Name != section.Name
-            ? $"{leaf.Name}"
-            : leaf.Name;
 
     private static string LeafSubtitle(TreeNode leaf)
     {

@@ -22,6 +22,9 @@ public enum ObjectFileKind
 /// <summary>ライブラリに含まれるオブジェクトファイル (アーカイブメンバー) 1 件。</summary>
 public sealed class ObjectFileInfo
 {
+    private long? totalSectionSize;
+    private long? metadataSize;
+
     /// <summary>アーカイブに記録されたメンバー名。フルパスの場合もある。</summary>
     public required string Name { get; init; }
 
@@ -48,15 +51,16 @@ public sealed class ObjectFileInfo
     public string? Warning { get; init; }
 
     /// <summary>全セクションのサイズ合計。</summary>
-    public long TotalSectionSize => Sections.Sum(s => s.Size);
+    public long TotalSectionSize => totalSectionSize ??= Sections.Sum(s => s.Size);
 
     /// <summary>メンバーサイズのうちセクション実体以外が占める分 (ヘッダー、シンボル、再配置、文字列テーブル)。</summary>
     public long MetadataSize
     {
         get
         {
-            long payload = Sections.Where(s => !s.IsUninitialized).Sum(s => s.RawDataSize);
-            return Math.Max(0, MemberSize - payload);
+            // 未初期化セクションの RawDataSize は解析時点で 0 にしてあるので、そのまま合計してよい。
+            metadataSize ??= Math.Max(0, MemberSize - Sections.Sum(s => s.RawDataSize));
+            return metadataSize.Value;
         }
     }
 }

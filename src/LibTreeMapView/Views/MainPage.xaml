@@ -82,7 +82,7 @@
 
         <!-- 表示オプション -->
         <Border Grid.Row="1" Style="{StaticResource PanelStyle}" Padding="10,6">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*" ColumnSpacing="14" RowSpacing="0">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="14" RowSpacing="0">
                 <HorizontalStackLayout Grid.Column="0" Spacing="6" VerticalOptions="Center">
                     <Label Text="階層" Style="{StaticResource MutedStyle}" VerticalOptions="Center" />
                     <Picker ItemsSource="{Binding GroupingOptions}"
@@ -101,7 +101,7 @@
                     <Label Text="メタデータを含める" VerticalOptions="Center" FontSize="13" />
                 </HorizontalStackLayout>
 
-                <SearchBar Grid.Column="4"
+                <SearchBar Grid.Column="3"
                            x:Name="FilterBar"
                            Placeholder="オブジェクト名でフィルター (例: string)"
                            TextChanged="OnFilterTextChanged"
@@ -154,7 +154,9 @@
                             <DropGestureRecognizer AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop" />
                         </Grid.GestureRecognizers>
 
-                        <GraphicsView x:Name="TreeMapView">
+                        <GraphicsView x:Name="TreeMapView"
+                                      SemanticProperties.Description="{Binding DisplayRootText}"
+                                      SemanticProperties.Hint="セクションサイズのツリーマップです。個々の項目は右の一覧からも選べます。">
                             <GraphicsView.GestureRecognizers>
                                 <PointerGestureRecognizer PointerMoved="OnPointerMoved" PointerExited="OnPointerExited" />
                                 <TapGestureRecognizer Tapped="OnTapped" />

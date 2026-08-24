@@ -1,3 +1,5 @@
+using LibTreeMapView.Core;
+using LibTreeMapView.Core.Caching;
 using LibTreeMapView.ViewModels;
 using LibTreeMapView.Views;
 using Microsoft.Extensions.Logging;
@@ -17,6 +19,8 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
 
+        builder.Services.AddSingleton(LibraryCache.Default);
+        builder.Services.AddSingleton(services => new LibraryLoader(services.GetRequiredService<LibraryCache>()));
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<MainPage>();
 

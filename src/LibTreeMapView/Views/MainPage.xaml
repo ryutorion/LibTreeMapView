@@ -51,7 +51,7 @@
 
         <!-- ツールバー -->
         <Border Grid.Row="0" Style="{StaticResource PanelStyle}" Padding="10">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="10">
                 <Button Grid.Column="0"
                         Text="ライブラリを開く…"
                         Command="{Binding OpenCommand}"
@@ -66,12 +66,19 @@
                         Padding="12,6"
                         FontSize="13" />
 
-                <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="1">
+                <Button Grid.Column="2"
+                        Text="キャッシュ消去"
+                        Command="{Binding ClearCacheCommand}"
+                        ToolTipProperties.Text="{Binding CacheLocationText}"
+                        Padding="12,6"
+                        FontSize="13" />
+
+                <VerticalStackLayout Grid.Column="3" VerticalOptions="Center" Spacing="1">
                     <Label Text="{Binding FilePath}" FontSize="13" LineBreakMode="MiddleTruncation" />
                     <Label Text="{Binding SummaryText}" Style="{StaticResource MutedStyle}" />
                 </VerticalStackLayout>
 
-                <ActivityIndicator Grid.Column="3"
+                <ActivityIndicator Grid.Column="4"
                                    IsRunning="{Binding IsBusy}"
                                    IsVisible="{Binding IsBusy}"
                                    WidthRequest="20"
@@ -82,7 +89,7 @@
 
         <!-- 表示オプション -->
         <Border Grid.Row="1" Style="{StaticResource PanelStyle}" Padding="10,6">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="14" RowSpacing="0">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*" ColumnSpacing="14" RowSpacing="0">
                 <HorizontalStackLayout Grid.Column="0" Spacing="6" VerticalOptions="Center">
                     <Label Text="階層" Style="{StaticResource MutedStyle}" VerticalOptions="Center" />
                     <Picker ItemsSource="{Binding GroupingOptions}"
@@ -101,7 +108,15 @@
                     <Label Text="メタデータを含める" VerticalOptions="Center" FontSize="13" />
                 </HorizontalStackLayout>
 
-                <SearchBar Grid.Column="3"
+                <HorizontalStackLayout Grid.Column="3" Spacing="2" VerticalOptions="Center">
+                    <CheckBox IsChecked="{Binding UseCache}" />
+                    <Label Text="キャッシュを使う"
+                           ToolTipProperties.Text="{Binding CacheLocationText}"
+                           VerticalOptions="Center"
+                           FontSize="13" />
+                </HorizontalStackLayout>
+
+                <SearchBar Grid.Column="4"
                            x:Name="FilterBar"
                            Placeholder="オブジェクト名でフィルター (例: string)"
                            TextChanged="OnFilterTextChanged"

@@ -1,0 +1,12 @@
+# ビルド成果物
+bin/
+obj/
+samples/out/
+
+# Visual Studio のユーザー固有ファイル
+.vs/
+*.user
+*.suo
+
+# テスト結果
+TestResults/

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LibTreeMapView.Core/LibTreeMapView.Core.csproj" />
+    <Project Path="src/LibTreeMapView/LibTreeMapView.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LibTreeMapView.Core.Tests/LibTreeMapView.Core.Tests.csproj" />
+  </Folder>
+</Solution>

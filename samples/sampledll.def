@@ -1,0 +1,5 @@
+LIBRARY sampledll
+EXPORTS
+    sample_alpha
+    sample_beta
+    sample_gamma

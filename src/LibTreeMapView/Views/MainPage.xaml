@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:LibTreeMapView.ViewModels"
+             xmlns:conv="clr-namespace:LibTreeMapView.Converters"
+             x:Class="LibTreeMapView.Views.MainPage"
+             x:Name="PageRoot"
+             x:DataType="vm:MainViewModel"
+             Title="Lib Tree Map View">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <conv:InvertedBoolConverter x:Key="Not" />
+
+            <Color x:Key="PanelLight">#FFFFFF</Color>
+            <Color x:Key="PanelDark">#1B2029</Color>
+            <Color x:Key="PageLight">#EDEFF3</Color>
+            <Color x:Key="PageDark">#10141A</Color>
+            <Color x:Key="BorderLight">#D6DAE1</Color>
+            <Color x:Key="BorderDark">#2C333F</Color>
+            <Color x:Key="TextMutedLight">#5A6472</Color>
+            <Color x:Key="TextMutedDark">#98A2B3</Color>
+            <Color x:Key="Accent">#3B6FD6</Color>
+
+            <Style x:Key="PanelStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource PanelLight}, Dark={StaticResource PanelDark}}" />
+                <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource BorderLight}, Dark={StaticResource BorderDark}}" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 6" />
+                <Setter Property="StrokeThickness" Value="1" />
+                <Setter Property="Padding" Value="12" />
+            </Style>
+
+            <Style x:Key="SectionTitleStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMutedDark}}" />
+                <Setter Property="Margin" Value="0,0,0,6" />
+            </Style>
+
+            <Style x:Key="MutedStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMutedDark}}" />
+            </Style>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto"
+          RowSpacing="8"
+          Padding="10"
+          BackgroundColor="{AppThemeBinding Light={StaticResource PageLight}, Dark={StaticResource PageDark}}">
+
+        <!-- ツールバー -->
+        <Border Grid.Row="0" Style="{StaticResource PanelStyle}" Padding="10">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
+                <Button Grid.Column="0"
+                        Text="ライブラリを開く…"
+                        Command="{Binding OpenCommand}"
+                        BackgroundColor="{StaticResource Accent}"
+                        TextColor="White"
+                        Padding="14,6"
+                        FontSize="13" />
+
+                <Button Grid.Column="1"
+                        Text="再読み込み"
+                        Command="{Binding ReloadCommand}"
+                        Padding="12,6"
+                        FontSize="13" />
+
+                <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="1">
+                    <Label Text="{Binding FilePath}" FontSize="13" LineBreakMode="MiddleTruncation" />
+                    <Label Text="{Binding SummaryText}" Style="{StaticResource MutedStyle}" />
+                </VerticalStackLayout>
+
+                <ActivityIndicator Grid.Column="3"
+                                   IsRunning="{Binding IsBusy}"
+                                   IsVisible="{Binding IsBusy}"
+                                   WidthRequest="20"
+                                   HeightRequest="20"
+                                   VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
+        <!-- 表示オプション -->
+        <Border Grid.Row="1" Style="{StaticResource PanelStyle}" Padding="10,6">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*" ColumnSpacing="14" RowSpacing="0">
+                <HorizontalStackLayout Grid.Column="0" Spacing="6" VerticalOptions="Center">
+                    <Label Text="階層" Style="{StaticResource MutedStyle}" VerticalOptions="Center" />
+                    <Picker ItemsSource="{Binding GroupingOptions}"
+                            SelectedItem="{Binding SelectedGrouping}"
+                            FontSize="13"
+                            WidthRequest="280" />
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                    <CheckBox IsChecked="{Binding IncludeUninitialized}" />
+                    <Label Text=".bss を含める" VerticalOptions="Center" FontSize="13" />
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout Grid.Column="2" Spacing="2" VerticalOptions="Center">
+                    <CheckBox IsChecked="{Binding IncludeMetadata}" />
+                    <Label Text="メタデータを含める" VerticalOptions="Center" FontSize="13" />
+                </HorizontalStackLayout>
+
+                <SearchBar Grid.Column="4"
+                           x:Name="FilterBar"
+                           Placeholder="オブジェクト名でフィルター (例: string)"
+                           TextChanged="OnFilterTextChanged"
+                           FontSize="13"
+                           HorizontalOptions="Fill" />
+            </Grid>
+        </Border>
+
+        <!-- 本体 -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,340" ColumnSpacing="8">
+
+            <Border Grid.Column="0" Style="{StaticResource PanelStyle}" Padding="10">
+                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+
+                    <!-- パンくず -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <ScrollView Grid.Column="0" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                            <HorizontalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding Breadcrumb}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BreadcrumbItem">
+                                        <HorizontalStackLayout Spacing="4">
+                                            <Button Text="{Binding Name}"
+                                                    Command="{Binding Command}"
+                                                    CommandParameter="{Binding Node}"
+                                                    FontSize="12"
+                                                    Padding="8,2"
+                                                    BackgroundColor="Transparent"
+                                                    TextColor="{StaticResource Accent}" />
+                                            <Label Text="›"
+                                                   IsVisible="{Binding ShowSeparator}"
+                                                   VerticalOptions="Center"
+                                                   FontSize="12"
+                                                   Opacity="0.5" />
+                                        </HorizontalStackLayout>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                        </ScrollView>
+
+                        <Label Grid.Column="1"
+                               Text="{Binding DisplayRootText}"
+                               Style="{StaticResource MutedStyle}"
+                               VerticalOptions="Center"
+                               LineBreakMode="TailTruncation" />
+                    </Grid>
+
+                    <!-- ツリーマップ -->
+                    <Grid Grid.Row="1">
+                        <Grid.GestureRecognizers>
+                            <DropGestureRecognizer AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop" />
+                        </Grid.GestureRecognizers>
+
+                        <GraphicsView x:Name="TreeMapView">
+                            <GraphicsView.GestureRecognizers>
+                                <PointerGestureRecognizer PointerMoved="OnPointerMoved" PointerExited="OnPointerExited" />
+                                <TapGestureRecognizer Tapped="OnTapped" />
+                                <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
+                            </GraphicsView.GestureRecognizers>
+                        </GraphicsView>
+
+                        <!-- 未読み込み時の案内 -->
+                        <VerticalStackLayout IsVisible="{Binding HasLibrary, Converter={StaticResource Not}}"
+                                             HorizontalOptions="Center"
+                                             VerticalOptions="Center"
+                                             Spacing="8"
+                                             InputTransparent="True">
+                            <Label Text="C++ 静的ライブラリ (.lib) のセクション構成を可視化します"
+                                   FontSize="15"
+                                   HorizontalTextAlignment="Center" />
+                            <Label Text="「ライブラリを開く…」を押すか、ここに .lib ファイルをドロップしてください"
+                                   Style="{StaticResource MutedStyle}"
+                                   HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 右パネル -->
+            <Border Grid.Column="1" Style="{StaticResource PanelStyle}" Padding="0">
+                <ScrollView Padding="12">
+                    <VerticalStackLayout Spacing="16">
+
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="選択中" Style="{StaticResource SectionTitleStyle}" />
+                            <Label Text="{Binding SelectedTitle}" FontAttributes="Bold" FontSize="14" LineBreakMode="CharacterWrap" />
+                            <VerticalStackLayout Spacing="3" BindableLayout.ItemsSource="{Binding Details}" Margin="0,4,0,0">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DetailItem">
+                                        <Grid ColumnDefinitions="120,*" ColumnSpacing="8">
+                                            <Label Grid.Column="0" Text="{Binding Label}" FontSize="11" Opacity="0.7" />
+                                            <Label Grid.Column="1" Text="{Binding Value}" FontSize="11" LineBreakMode="CharacterWrap" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="種別ごとの内訳" Style="{StaticResource SectionTitleStyle}" />
+                            <VerticalStackLayout Spacing="5" BindableLayout.ItemsSource="{Binding Legend}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:LegendItem">
+                                        <Grid ColumnDefinitions="12,*,Auto" ColumnSpacing="6">
+                                            <BoxView Grid.Column="0"
+                                                     Color="{Binding Color}"
+                                                     WidthRequest="12"
+                                                     HeightRequest="12"
+                                                     CornerRadius="2"
+                                                     VerticalOptions="Center" />
+                                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                                <Label Text="{Binding Name}" FontSize="11" />
+                                                <BoxView Color="{Binding Color}"
+                                                         HeightRequest="3"
+                                                         CornerRadius="2"
+                                                         WidthRequest="{Binding BarWidth}"
+                                                         HorizontalOptions="Start" />
+                                            </VerticalStackLayout>
+                                            <VerticalStackLayout Grid.Column="2" Spacing="0" HorizontalOptions="End">
+                                                <Label Text="{Binding SizeText}" FontSize="11" HorizontalTextAlignment="End" />
+                                                <Label Text="{Binding PercentText}" FontSize="10" Opacity="0.6" HorizontalTextAlignment="End" />
+                                            </VerticalStackLayout>
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="サイズ上位" Style="{StaticResource SectionTitleStyle}" />
+                            <VerticalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding RankedItems}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:RankedItem">
+                                        <Grid ColumnDefinitions="22,*,Auto" ColumnSpacing="6" Padding="0,2">
+                                            <Grid.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding Command}" CommandParameter="{Binding Node}" />
+                                            </Grid.GestureRecognizers>
+                                            <Label Grid.Column="0" Text="{Binding Rank}" FontSize="11" Opacity="0.5" />
+                                            <VerticalStackLayout Grid.Column="1" Spacing="0">
+                                                <Label Text="{Binding Name}" FontSize="11" LineBreakMode="MiddleTruncation" />
+                                                <Label Text="{Binding Location}" FontSize="10" Opacity="0.55" LineBreakMode="MiddleTruncation" />
+                                            </VerticalStackLayout>
+                                            <VerticalStackLayout Grid.Column="2" Spacing="0" HorizontalOptions="End">
+                                                <Label Text="{Binding SizeText}" FontSize="11" HorizontalTextAlignment="End" />
+                                                <Label Text="{Binding PercentText}" FontSize="10" Opacity="0.55" HorizontalTextAlignment="End" />
+                                            </VerticalStackLayout>
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+        </Grid>
+
+        <!-- ステータスバー -->
+        <Border Grid.Row="3" Style="{StaticResource PanelStyle}" Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                    <Label Text="{Binding StatusMessage}" Style="{StaticResource MutedStyle}" />
+                    <Label Text="{Binding HoverText}" FontSize="11" LineBreakMode="TailTruncation" MaxLines="1" />
+                    <Label Text="{Binding ErrorMessage}"
+                           IsVisible="{Binding HasError}"
+                           FontSize="12"
+                           TextColor="#D64545"
+                           LineBreakMode="WordWrap" />
+                    <Label Text="{Binding WarningText}"
+                           IsVisible="{Binding HasWarnings}"
+                           FontSize="11"
+                           TextColor="#B7791F"
+                           LineBreakMode="WordWrap"
+                           MaxLines="3" />
+                </VerticalStackLayout>
+
+                <Button Grid.Column="1"
+                        Text="一つ上へ"
+                        Command="{Binding ZoomOutCommand}"
+                        FontSize="12"
+                        Padding="10,4" />
+
+                <Button Grid.Column="2"
+                        Text="全体表示"
+                        Command="{Binding ResetZoomCommand}"
+                        FontSize="12"
+                        Padding="10,4" />
+            </Grid>
+        </Border>
+    </Grid>
+</ContentPage>

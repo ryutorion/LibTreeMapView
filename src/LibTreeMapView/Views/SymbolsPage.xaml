@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:LibTreeMapView.ViewModels"
+             x:Class="LibTreeMapView.Views.SymbolsPage"
+             x:DataType="vm:SymbolsViewModel"
+             Title="シンボル">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto"
+          RowSpacing="8"
+          Padding="10"
+          BackgroundColor="{AppThemeBinding Light={StaticResource PageLight}, Dark={StaticResource PageDark}}">
+
+        <!-- ツールバー -->
+        <Border Grid.Row="0" Style="{StaticResource PanelStyle}" Padding="10">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                <Button Grid.Column="0"
+                        Text="ライブラリを開く…"
+                        Clicked="OnOpenClicked"
+                        BackgroundColor="{StaticResource Accent}"
+                        TextColor="White"
+                        Padding="14,6"
+                        FontSize="13" />
+
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                    <Label Text="{Binding LibraryPath}" FontSize="13" LineBreakMode="MiddleTruncation" />
+                    <Label Text="{Binding SummaryText}" Style="{StaticResource MutedStyle}" />
+                </VerticalStackLayout>
+
+                <ActivityIndicator Grid.Column="2"
+                                   IsRunning="{Binding IsBusy}"
+                                   IsVisible="{Binding IsBusy}"
+                                   WidthRequest="20"
+                                   HeightRequest="20"
+                                   VerticalOptions="Center" />
+
+                <Button Grid.Column="3"
+                        Text="単一表示に戻る"
+                        Clicked="OnBackClicked"
+                        Padding="12,6"
+                        FontSize="13" />
+            </Grid>
+        </Border>
+
+        <!-- 表示オプションと PDB の状態 -->
+        <Border Grid.Row="1" Style="{StaticResource PanelStyle}" Padding="10,6">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*" ColumnSpacing="14">
+                    <HorizontalStackLayout Grid.Column="0" Spacing="6" VerticalOptions="Center">
+                        <Label Text="種別" Style="{StaticResource MutedStyle}" VerticalOptions="Center" />
+                        <Picker ItemsSource="{Binding KindOptions}"
+                                SelectedItem="{Binding SelectedKind}"
+                                FontSize="13"
+                                WidthRequest="140" />
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <CheckBox IsChecked="{Binding UsePdb}" />
+                        <Label Text="同じディレクトリの PDB を使う" VerticalOptions="Center" FontSize="13" />
+                    </HorizontalStackLayout>
+
+                    <SearchBar Grid.Column="2"
+                               Placeholder="名前空間・シンボル名・オブジェクト名でフィルター"
+                               TextChanged="OnFilterTextChanged"
+                               FontSize="13"
+                               HorizontalOptions="Fill" />
+                </Grid>
+
+                <Label Grid.Row="1"
+                       Text="{Binding PdbText}"
+                       Style="{StaticResource MutedStyle}"
+                       FontSize="11"
+                       LineBreakMode="WordWrap" />
+            </Grid>
+        </Border>
+
+        <!-- 本体 -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,420" ColumnSpacing="8">
+
+            <Border Grid.Column="0" Style="{StaticResource PanelStyle}" Padding="10">
+                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+
+                    <!-- パンくず -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <ScrollView Grid.Column="0" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                            <HorizontalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding Breadcrumb}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BreadcrumbItem">
+                                        <HorizontalStackLayout Spacing="4">
+                                            <Button Text="{Binding Name}"
+                                                    Command="{Binding Command}"
+                                                    CommandParameter="{Binding Node}"
+                                                    FontSize="12"
+                                                    Padding="8,2"
+                                                    BackgroundColor="Transparent"
+                                                    TextColor="{StaticResource Accent}" />
+                                            <Label Text="›"
+                                                   IsVisible="{Binding ShowSeparator}"
+                                                   VerticalOptions="Center"
+                                                   FontSize="12"
+                                                   Opacity="0.5" />
+                                        </HorizontalStackLayout>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                        </ScrollView>
+
+                        <Label Grid.Column="1"
+                               Text="{Binding DisplayRootText}"
+                               Style="{StaticResource MutedStyle}"
+                               VerticalOptions="Center"
+                               LineBreakMode="TailTruncation" />
+                    </Grid>
+
+                    <!-- 名前空間ツリーマップ -->
+                    <Grid Grid.Row="1">
+                        <GraphicsView x:Name="TreeMapView"
+                                      SemanticProperties.Description="{Binding DisplayRootText}"
+                                      SemanticProperties.Hint="シンボルを名前空間ごとにまとめたツリーマップです。右の一覧からも選べます。">
+                            <GraphicsView.GestureRecognizers>
+                                <PointerGestureRecognizer PointerMoved="OnPointerMoved" PointerExited="OnPointerExited" />
+                                <TapGestureRecognizer Tapped="OnTapped" />
+                                <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
+                            </GraphicsView.GestureRecognizers>
+                        </GraphicsView>
+
+                        <VerticalStackLayout IsVisible="{Binding HasSymbols, Converter={StaticResource Not}}"
+                                             HorizontalOptions="Center"
+                                             VerticalOptions="Center"
+                                             Spacing="8"
+                                             InputTransparent="True">
+                            <Label Text="シンボルを名前空間ごとに整理して表示します"
+                                   FontSize="15"
+                                   HorizontalTextAlignment="Center" />
+                            <Label Text="「ライブラリを開く…」で .lib を選んでください"
+                                   Style="{StaticResource MutedStyle}"
+                                   HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 右パネル -->
+            <Border Grid.Column="1" Style="{StaticResource PanelStyle}" Padding="0">
+                <Grid RowDefinitions="Auto,*">
+                    <VerticalStackLayout Grid.Row="0" Padding="12,10,12,6" Spacing="4">
+                        <Label Text="選択中" Style="{StaticResource SectionTitleStyle}" Margin="0" />
+                        <Label Text="{Binding SelectedTitle}" FontAttributes="Bold" FontSize="13" LineBreakMode="CharacterWrap" />
+                        <VerticalStackLayout Spacing="3" BindableLayout.ItemsSource="{Binding Details}" Margin="0,4,0,0">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DetailItem">
+                                    <Grid ColumnDefinitions="120,*" ColumnSpacing="8">
+                                        <Label Grid.Column="0" Text="{Binding Label}" FontSize="11" Opacity="0.7" />
+                                        <Label Grid.Column="1" Text="{Binding Value}" FontSize="11" LineBreakMode="CharacterWrap" MaxLines="6" />
+                                    </Grid>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+
+                    <Grid Grid.Row="1" RowDefinitions="Auto,*" Padding="12,6,12,10" RowSpacing="4">
+                        <Label Grid.Row="0" Text="サイズの大きいシンボル" Style="{StaticResource SectionTitleStyle}" Margin="0" />
+
+                        <CollectionView Grid.Row="1" ItemsSource="{Binding RankedSymbols}" SelectionMode="None">
+                            <CollectionView.EmptyView>
+                                <Label Text="表示するシンボルがありません。"
+                                       Style="{StaticResource MutedStyle}"
+                                       Margin="0,8,0,0" />
+                            </CollectionView.EmptyView>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SymbolRow">
+                                    <Grid ColumnDefinitions="26,*,88" ColumnSpacing="6" Padding="0,3">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding Command}" CommandParameter="{Binding Node}" />
+                                        </Grid.GestureRecognizers>
+
+                                        <Label Grid.Column="0" Text="{Binding Rank}" FontSize="11" Opacity="0.5" />
+
+                                        <VerticalStackLayout Grid.Column="1" Spacing="1" HorizontalOptions="Fill">
+                                            <Label Text="{Binding Name}" FontSize="12" LineBreakMode="MiddleTruncation" HorizontalOptions="Fill" />
+                                            <Label Text="{Binding NamespaceText}" FontSize="10" Opacity="0.65" LineBreakMode="MiddleTruncation" HorizontalOptions="Fill" />
+                                            <Label Text="{Binding Location}" FontSize="10" Opacity="0.5" LineBreakMode="MiddleTruncation" HorizontalOptions="Fill" />
+                                        </VerticalStackLayout>
+
+                                        <VerticalStackLayout Grid.Column="2" Spacing="2" HorizontalOptions="End">
+                                            <Label Text="{Binding SizeText}" FontSize="11" HorizontalTextAlignment="End" />
+                                            <Label Text="{Binding PercentText}" FontSize="10" Opacity="0.55" HorizontalTextAlignment="End" />
+                                            <BoxView Color="{StaticResource Accent}"
+                                                     HeightRequest="3"
+                                                     CornerRadius="2"
+                                                     WidthRequest="{Binding BarWidth}"
+                                                     HorizontalOptions="End" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ステータスバー -->
+        <Border Grid.Row="3" Style="{StaticResource PanelStyle}" Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                    <Label Text="{Binding StatusMessage}" Style="{StaticResource MutedStyle}" />
+                    <Label Text="{Binding HoverText}" FontSize="11" LineBreakMode="TailTruncation" MaxLines="1" />
+                    <Label Text="{Binding ErrorMessage}"
+                           IsVisible="{Binding HasError}"
+                           FontSize="12"
+                           TextColor="#D64545"
+                           LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+
+                <Button Grid.Column="1" Text="一つ上へ" Command="{Binding ZoomOutCommand}" FontSize="12" Padding="10,4" />
+                <Button Grid.Column="2" Text="全体表示" Command="{Binding ResetZoomCommand}" FontSize="12" Padding="10,4" />
+            </Grid>
+        </Border>
+    </Grid>
+</ContentPage>

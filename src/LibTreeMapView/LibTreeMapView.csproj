@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<!-- .lib の解析は Windows のツールチェーン向けの用途なので Windows のみを対象にする。 -->
@@ -20,10 +20,21 @@
 		<ApplicationId>com.libtreemapview.app</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
 		<ApplicationVersion>1</ApplicationVersion>
 
+		<!-- 発行した exe のプロパティに出る情報 -->
+		<Product>Lib Tree Map View</Product>
+		<AssemblyTitle>Lib Tree Map View</AssemblyTitle>
+		<Description>C++ の静的ライブラリ (.lib) のセクションサイズをツリーマップで可視化します。</Description>
+		<Company>ryutorion</Company>
+		<Copyright>Copyright (c) ryutorion</Copyright>
+
+		<!-- MSIX ではなく、そのまま実行できる形 (アンパッケージ) で配布する。 -->
 		<WindowsPackageType>None</WindowsPackageType>
+
+		<!-- 既定では 100 以上のロケールが付いてくるので、使うものだけに絞る。 -->
+		<SatelliteResourceLanguages>en;ja</SatelliteResourceLanguages>
 
 		<SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>

@@ -2,6 +2,7 @@
 bin/
 obj/
 samples/out/
+publish/
 
 # Visual Studio のユーザー固有ファイル
 .vs/

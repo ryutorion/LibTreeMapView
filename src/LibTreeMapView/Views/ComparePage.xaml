@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:LibTreeMapView.ViewModels"
+             x:Class="LibTreeMapView.Views.ComparePage"
+             x:DataType="vm:CompareViewModel"
+             Title="ライブラリの比較">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto"
+          RowSpacing="8"
+          Padding="10"
+          BackgroundColor="{AppThemeBinding Light={StaticResource PageLight}, Dark={StaticResource PageDark}}">
+
+        <!-- ツールバー -->
+        <Border Grid.Row="0" Style="{StaticResource PanelStyle}" Padding="10">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,*,Auto,Auto" ColumnSpacing="10">
+                <Button Grid.Column="0"
+                        Text="比較元 A を開く…"
+                        Command="{Binding OpenBaselineCommand}"
+                        BackgroundColor="{StaticResource Accent}"
+                        TextColor="White"
+                        Padding="12,6"
+                        FontSize="13" />
+
+                <Label Grid.Column="1"
+                       Text="{Binding BaselinePath}"
+                       FontSize="12"
+                       VerticalOptions="Center"
+                       LineBreakMode="MiddleTruncation" />
+
+                <Button Grid.Column="2"
+                        Text="⇄"
+                        Command="{Binding SwapCommand}"
+                        ToolTipProperties.Text="A と B を入れ替える"
+                        Padding="10,6"
+                        FontSize="13" />
+
+                <Button Grid.Column="3"
+                        Text="比較先 B を開く…"
+                        Command="{Binding OpenTargetCommand}"
+                        BackgroundColor="{StaticResource Accent}"
+                        TextColor="White"
+                        Padding="12,6"
+                        FontSize="13" />
+
+                <Label Grid.Column="4"
+                       Text="{Binding TargetPath}"
+                       FontSize="12"
+                       VerticalOptions="Center"
+                       LineBreakMode="MiddleTruncation" />
+
+                <ActivityIndicator Grid.Column="5"
+                                   IsRunning="{Binding IsBusy}"
+                                   IsVisible="{Binding IsBusy}"
+                                   WidthRequest="20"
+                                   HeightRequest="20"
+                                   VerticalOptions="Center" />
+
+                <Button Grid.Column="6"
+                        Text="単一表示に戻る"
+                        Clicked="OnBackClicked"
+                        Padding="12,6"
+                        FontSize="13" />
+            </Grid>
+        </Border>
+
+        <!-- 集計と絞り込み -->
+        <Border Grid.Row="1" Style="{StaticResource PanelStyle}" Padding="10,6">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <Label Grid.Column="0"
+                           Text="{Binding SummaryText}"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           VerticalOptions="Center" />
+                    <Label Grid.Column="1"
+                           Text="{Binding CountsText}"
+                           Style="{StaticResource MutedStyle}"
+                           VerticalOptions="Center" />
+                </Grid>
+
+                <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,Auto,*" ColumnSpacing="14">
+                    <HorizontalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                        <CheckBox IsChecked="{Binding OnlyChangedObjects}" />
+                        <Label Text="差分のあるオブジェクトのみ" VerticalOptions="Center" FontSize="13" />
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <CheckBox IsChecked="{Binding OnlyChangedSections}" />
+                        <Label Text="差分のあるセクションのみ" VerticalOptions="Center" FontSize="13" />
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Grid.Column="2" Spacing="2" VerticalOptions="Center">
+                        <CheckBox IsChecked="{Binding IncludeUninitialized}" />
+                        <Label Text=".bss を含める" VerticalOptions="Center" FontSize="13" />
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Grid.Column="3" Spacing="2" VerticalOptions="Center">
+                        <CheckBox IsChecked="{Binding IncludeMetadata}" />
+                        <Label Text="メタデータを含める" VerticalOptions="Center" FontSize="13" />
+                    </HorizontalStackLayout>
+
+                    <SearchBar Grid.Column="4"
+                               Placeholder="オブジェクト名でフィルター"
+                               TextChanged="OnFilterTextChanged"
+                               FontSize="13"
+                               HorizontalOptions="Fill" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- 一覧 -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="8">
+
+            <!-- オブジェクト差分 -->
+            <Border Grid.Column="0" Style="{StaticResource PanelStyle}" Padding="12,10">
+                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="6">
+                    <Label Grid.Row="0" Text="{Binding ObjectsHeaderText}" Style="{StaticResource SectionTitleStyle}" Margin="0" />
+
+                    <Grid Grid.Row="1" ColumnDefinitions="52,*,74,74,120" ColumnSpacing="6" Padding="10,0,0,0">
+                        <Label Grid.Column="0" Text="状態" Style="{StaticResource MutedStyle}" FontSize="11" />
+                        <Label Grid.Column="1" Text="オブジェクト" Style="{StaticResource MutedStyle}" FontSize="11" />
+                        <Label Grid.Column="2" Text="A" Style="{StaticResource MutedStyle}" FontSize="11" HorizontalTextAlignment="End" />
+                        <Label Grid.Column="3" Text="B" Style="{StaticResource MutedStyle}" FontSize="11" HorizontalTextAlignment="End" />
+                        <Label Grid.Column="4" Text="差分" Style="{StaticResource MutedStyle}" FontSize="11" HorizontalTextAlignment="End" />
+                    </Grid>
+
+                    <CollectionView Grid.Row="2"
+                                    ItemsSource="{Binding Objects}"
+                                    SelectedItem="{Binding SelectedObject}"
+                                    SelectionMode="Single">
+                        <CollectionView.EmptyView>
+                            <Label Text="表示する差分がありません。2 つの .lib を開くか、絞り込みを外してください。"
+                                   Style="{StaticResource MutedStyle}"
+                                   Margin="0,12,0,0"
+                                   LineBreakMode="WordWrap" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ObjectDiffRow">
+                                <Grid ColumnDefinitions="52,*,74,74,120" ColumnSpacing="6" Padding="10,4,0,4">
+                                    <Label Grid.Column="0"
+                                           Text="{Binding StatusText}"
+                                           TextColor="{Binding StatusColor}"
+                                           FontSize="11"
+                                           FontAttributes="Bold"
+                                           VerticalOptions="Center" />
+
+                                    <VerticalStackLayout Grid.Column="1" Spacing="1">
+                                        <Label Text="{Binding Name}" FontSize="12" LineBreakMode="MiddleTruncation" />
+                                        <Label Text="{Binding SectionSummary}" FontSize="10" Opacity="0.6" />
+                                    </VerticalStackLayout>
+
+                                    <Label Grid.Column="2"
+                                           Text="{Binding BaselineText}"
+                                           FontSize="11"
+                                           HorizontalTextAlignment="End"
+                                           VerticalOptions="Center" />
+
+                                    <Label Grid.Column="3"
+                                           Text="{Binding TargetText}"
+                                           FontSize="11"
+                                           HorizontalTextAlignment="End"
+                                           VerticalOptions="Center" />
+
+                                    <VerticalStackLayout Grid.Column="4" Spacing="2" HorizontalOptions="End">
+                                        <Label Text="{Binding DeltaText}"
+                                               TextColor="{Binding DeltaColor}"
+                                               FontSize="12"
+                                               FontAttributes="Bold"
+                                               HorizontalTextAlignment="End" />
+                                        <BoxView Color="{Binding DeltaColor}"
+                                                 HeightRequest="3"
+                                                 CornerRadius="2"
+                                                 WidthRequest="{Binding BarWidth}"
+                                                 HorizontalOptions="End" />
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+            </Border>
+
+            <!-- セクション差分 -->
+            <Border Grid.Column="1" Style="{StaticResource PanelStyle}" Padding="12,10">
+                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="6">
+                    <Label Grid.Row="0" Text="{Binding SelectedObjectTitle}" Style="{StaticResource SectionTitleStyle}" Margin="0" />
+
+                    <Grid Grid.Row="1" ColumnDefinitions="52,*,74,74,120" ColumnSpacing="6" Padding="10,0,0,0">
+                        <Label Grid.Column="0" Text="状態" Style="{StaticResource MutedStyle}" FontSize="11" />
+                        <Label Grid.Column="1" Text="セクション" Style="{StaticResource MutedStyle}" FontSize="11" />
+                        <Label Grid.Column="2" Text="A" Style="{StaticResource MutedStyle}" FontSize="11" HorizontalTextAlignment="End" />
+                        <Label Grid.Column="3" Text="B" Style="{StaticResource MutedStyle}" FontSize="11" HorizontalTextAlignment="End" />
+                        <Label Grid.Column="4" Text="差分" Style="{StaticResource MutedStyle}" FontSize="11" HorizontalTextAlignment="End" />
+                    </Grid>
+
+                    <CollectionView Grid.Row="2" ItemsSource="{Binding Sections}" SelectionMode="None">
+                        <CollectionView.EmptyView>
+                            <Label Text="差分のあるセクションはありません。"
+                                   Style="{StaticResource MutedStyle}"
+                                   Margin="0,12,0,0" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SectionDiffRow">
+                                <Grid ColumnDefinitions="52,*,74,74,120" ColumnSpacing="6" Padding="10,4,0,4">
+                                    <Label Grid.Column="0"
+                                           Text="{Binding StatusText}"
+                                           TextColor="{Binding StatusColor}"
+                                           FontSize="11"
+                                           FontAttributes="Bold"
+                                           VerticalOptions="Center" />
+
+                                    <Label Grid.Column="1"
+                                           Text="{Binding Name}"
+                                           FontSize="12"
+                                           VerticalOptions="Center"
+                                           LineBreakMode="MiddleTruncation" />
+
+                                    <Label Grid.Column="2"
+                                           Text="{Binding BaselineText}"
+                                           FontSize="11"
+                                           HorizontalTextAlignment="End"
+                                           VerticalOptions="Center" />
+
+                                    <Label Grid.Column="3"
+                                           Text="{Binding TargetText}"
+                                           FontSize="11"
+                                           HorizontalTextAlignment="End"
+                                           VerticalOptions="Center" />
+
+                                    <VerticalStackLayout Grid.Column="4" Spacing="2" HorizontalOptions="End">
+                                        <Label Text="{Binding DeltaText}"
+                                               TextColor="{Binding DeltaColor}"
+                                               FontSize="12"
+                                               FontAttributes="Bold"
+                                               HorizontalTextAlignment="End" />
+                                        <BoxView Color="{Binding DeltaColor}"
+                                                 HeightRequest="3"
+                                                 CornerRadius="2"
+                                                 WidthRequest="{Binding BarWidth}"
+                                                 HorizontalOptions="End" />
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ステータスバー -->
+        <Border Grid.Row="3" Style="{StaticResource PanelStyle}" Padding="10,6">
+            <VerticalStackLayout Spacing="2">
+                <Label Text="{Binding StatusMessage}" Style="{StaticResource MutedStyle}" />
+                <Label Text="{Binding ErrorMessage}"
+                       IsVisible="{Binding HasError}"
+                       FontSize="12"
+                       TextColor="#D64545"
+                       LineBreakMode="WordWrap" />
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

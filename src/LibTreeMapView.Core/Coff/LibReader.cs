@@ -43,86 +43,37 @@ public static class LibReader
 
     public static LibraryInfo Read(ReadOnlySpan<byte> data, string path)
     {
-        if (data.Length < CoffConstants.ArchiveMagicLength ||
-            !data[..CoffConstants.ArchiveMagicLength].SequenceEqual(Encoding.ASCII.GetBytes(CoffConstants.ArchiveMagic)))
-        {
-            throw new LibFormatException(
-                "COFF アーカイブの署名が見つかりません。MSVC の静的ライブラリ (.lib) を指定してください。");
-        }
-
         var objects = new List<ObjectFileInfo>();
         var warnings = new List<string>();
-        byte[] longNames = [];
-
-        int offset = CoffConstants.ArchiveMagicLength;
-        int memberIndex = 0;
         int elfMemberCount = 0;
 
-        while (offset + CoffConstants.MemberHeaderSize <= data.Length)
+        warnings.AddRange(ArchiveWalker.Walk(data, (kind, name, body, memberSize, index) =>
         {
-            ReadOnlySpan<byte> header = data.Slice(offset, CoffConstants.MemberHeaderSize);
-
-            if (header[58] != (byte)'`' || header[59] != (byte)'\n')
+            if (kind is ArchiveMemberKind.LinkerMember or ArchiveMemberKind.LongNames)
             {
-                warnings.Add($"オフセット 0x{offset:X} のメンバーヘッダーが壊れているため、以降の解析を打ち切りました。");
-                break;
+                // 中身は解析せずサイズだけ数える。
+                objects.Add(CreateSpecialMember(name, memberSize));
+                return;
             }
 
-            string rawName = Encoding.ASCII.GetString(header[..16]).TrimEnd();
-            string sizeText = Encoding.ASCII.GetString(header.Slice(48, 10)).Trim();
-
-            if (!long.TryParse(sizeText, out long memberSize) || memberSize < 0 ||
-                offset + CoffConstants.MemberHeaderSize + memberSize > data.Length)
+            if (IsElf(body))
             {
-                warnings.Add($"オフセット 0x{offset:X} のメンバーサイズ ({sizeText}) が不正なため、以降の解析を打ち切りました。");
-                break;
+                // GNU ar のライブラリ。署名は同じだがメンバーは COFF ではない。
+                elfMemberCount++;
+                objects.Add(CreateUnknownMember(name, memberSize, "ELF 形式のオブジェクトのため解析できません。"));
+                return;
             }
 
-            ReadOnlySpan<byte> body = data.Slice(offset + CoffConstants.MemberHeaderSize, (int)memberSize);
-            memberIndex++;
-
-            if (rawName is "/" or "")
+            try
             {
-                // 1 番目・2 番目のリンカーメンバー (シンボルテーブル)。中身は解析せずサイズだけ数える。
-                objects.Add(CreateSpecialMember(
-                    memberIndex == 1 ? "(リンカーメンバー #1: シンボルテーブル)" : "(リンカーメンバー #2: シンボルテーブル)",
-                    memberSize));
+                objects.Add(ParseMember(body, name, memberSize));
             }
-            else if (rawName == "//")
+            catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException or OverflowException)
             {
-                longNames = body.ToArray();
-                objects.Add(CreateSpecialMember("(ロングネームテーブル)", memberSize));
+                warnings.Add($"{name} の解析に失敗しました: {ex.Message}");
+                objects.Add(CreateUnknownMember(name, memberSize, ex.Message));
             }
-            else
-            {
-                string name = ResolveMemberName(rawName, longNames);
-
-                if (IsElf(body))
-                {
-                    // GNU ar のライブラリ。署名は同じだがメンバーは COFF ではない。
-                    elfMemberCount++;
-                    objects.Add(CreateUnknownMember(name, memberSize, "ELF 形式のオブジェクトのため解析できません。"));
-                }
-                else
-                {
-                    try
-                    {
-                        objects.Add(ParseMember(body, name, memberSize));
-                    }
-                    catch (Exception ex) when (ex is ArgumentException or IndexOutOfRangeException or OverflowException)
-                    {
-                        warnings.Add($"{name} の解析に失敗しました: {ex.Message}");
-                        objects.Add(CreateUnknownMember(name, memberSize, ex.Message));
-                    }
-                }
-            }
-
-            offset += CoffConstants.MemberHeaderSize + (int)memberSize;
-            if ((offset & 1) != 0)
-            {
-                offset++; // メンバーは 2 バイト境界に整列する
-            }
-        }
+        }));
 
         if (elfMemberCount > 0)
         {
@@ -141,29 +92,6 @@ public static class LibReader
             Objects = objects,
             Warnings = warnings,
         };
-    }
-
-    private static string ResolveMemberName(string rawName, ReadOnlySpan<byte> longNames)
-    {
-        if (rawName.Length > 1 && rawName[0] == '/' && int.TryParse(rawName[1..], out int nameOffset))
-        {
-            if (nameOffset >= 0 && nameOffset < longNames.Length)
-            {
-                ReadOnlySpan<byte> tail = longNames[nameOffset..];
-                int end = tail.IndexOfAny((byte)0, (byte)'\n');
-                if (end < 0)
-                {
-                    end = tail.Length;
-                }
-
-                string longName = Encoding.UTF8.GetString(tail[..end]).TrimEnd();
-                return longName.Length > 0 ? longName.TrimEnd('/') : rawName;
-            }
-
-            return rawName;
-        }
-
-        return rawName.TrimEnd('/');
     }
 
     private static ObjectFileInfo ParseMember(ReadOnlySpan<byte> body, string name, long memberSize)
@@ -248,7 +176,7 @@ public static class LibReader
         return new ObjectFileInfo
         {
             Name = name,
-            ShortName = ToShortName(name),
+            ShortName = ArchiveWalker.ToShortName(name),
             MemberSize = memberSize,
             Kind = bigObj ? ObjectFileKind.BigObj : ObjectFileKind.Coff,
             Machine = machine,
@@ -408,7 +336,7 @@ public static class LibReader
         return new ObjectFileInfo
         {
             Name = string.IsNullOrEmpty(symbolName) ? name : $"{name} [{symbolName}]",
-            ShortName = ToShortName(name),
+            ShortName = ArchiveWalker.ToShortName(name),
             MemberSize = memberSize,
             Kind = ObjectFileKind.Import,
             Machine = machine,
@@ -452,7 +380,7 @@ public static class LibReader
         return new ObjectFileInfo
         {
             Name = name,
-            ShortName = ToShortName(name),
+            ShortName = ArchiveWalker.ToShortName(name),
             MemberSize = memberSize,
             Kind = kind,
             Machine = 0,
@@ -465,7 +393,7 @@ public static class LibReader
         new()
         {
             Name = name,
-            ShortName = ToShortName(name),
+            ShortName = ArchiveWalker.ToShortName(name),
             MemberSize = memberSize,
             Kind = ObjectFileKind.Unknown,
             Machine = 0,
@@ -473,10 +401,4 @@ public static class LibReader
             Sections = [],
             Warning = warning,
         };
-
-    private static string ToShortName(string name)
-    {
-        int index = name.LastIndexOfAny(['\\', '/']);
-        return index >= 0 && index < name.Length - 1 ? name[(index + 1)..] : name;
-    }
 }

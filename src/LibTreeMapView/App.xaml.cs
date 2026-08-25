@@ -16,7 +16,7 @@ public partial class App : Application
     {
         var page = services.GetRequiredService<MainPage>();
 
-        var window = new Window(page)
+        var window = new Window(new NavigationPage(page))
         {
             Title = "Lib Tree Map View — C++ 静的ライブラリのセクションサイズ",
             Width = 1360,
@@ -25,11 +25,21 @@ public partial class App : Application
             MinimumHeight = 600,
         };
 
-        // "app.exe foo.lib" のように渡された .lib をそのまま開く。
-        string[] args = Environment.GetCommandLineArgs();
-        if (args.Length > 1 && File.Exists(args[1]))
+        // "app.exe foo.lib" なら単一表示、"app.exe a.lib b.lib" なら比較ビューで開く。
+        string[] files = Environment.GetCommandLineArgs().Skip(1).Where(File.Exists).ToArray();
+
+        if (files.Length >= 2)
         {
-            window.Created += async (_, _) => await page.LoadAsync(args[1]);
+            ComparePage comparePage = services.GetRequiredService<ComparePage>();
+            window.Created += async (_, _) =>
+            {
+                await page.Navigation.PushAsync(comparePage);
+                await comparePage.LoadAsync(files[0], files[1]);
+            };
+        }
+        else if (files.Length == 1)
+        {
+            window.Created += async (_, _) => await page.LoadAsync(files[0]);
         }
 
         return window;

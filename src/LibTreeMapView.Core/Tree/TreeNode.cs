@@ -1,4 +1,5 @@
 using LibTreeMapView.Core.Model;
+using LibTreeMapView.Core.Symbols;
 
 namespace LibTreeMapView.Core.Tree;
 
@@ -9,6 +10,12 @@ public enum TreeNodeKind
     SectionGroup,
     ObjectFile,
     Section,
+
+    /// <summary>名前空間・クラスのまとまり。</summary>
+    Namespace,
+
+    /// <summary>1 つのシンボル。</summary>
+    Symbol,
 }
 
 /// <summary>ツリーマップに描画する 1 ノード。構築後は不変。</summary>
@@ -23,8 +30,10 @@ public sealed class TreeNode
         long size,
         IReadOnlyList<TreeNode>? children = null,
         SectionInfo? section = null,
-        ObjectFileInfo? objectFile = null)
+        ObjectFileInfo? objectFile = null,
+        SymbolInfo? symbol = null)
     {
+        Symbol = symbol;
         Name = name;
         Kind = kind;
         SectionKind = sectionKind;
@@ -58,6 +67,9 @@ public sealed class TreeNode
 
     /// <summary>オブジェクトノード／セクション葉ノードが属するオブジェクトファイル。</summary>
     public ObjectFileInfo? ObjectFile { get; }
+
+    /// <summary>シンボル表示のときの元シンボル。</summary>
+    public SymbolInfo? Symbol { get; }
 
     public bool IsLeaf => Children.Count == 0;
 

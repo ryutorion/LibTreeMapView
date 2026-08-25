@@ -1,4 +1,3 @@
-using LibTreeMapView.Core.Layout;
 using LibTreeMapView.Core.Model;
 using LibTreeMapView.Core.Tree;
 using LibTreeMapView.Drawing;
@@ -11,21 +10,30 @@ public partial class MainPage : ContentPage
     private static readonly TimeSpan FilterDebounce = TimeSpan.FromMilliseconds(300);
 
     private readonly MainViewModel viewModel;
-    private readonly TreeMapDrawable drawable = new();
+    private readonly ComparePage comparePage;
+    private readonly SymbolsPage symbolsPage;
+    private readonly TreeMapController treeMap;
 
     private CancellationTokenSource? filterDebounce;
 
-    public MainPage(MainViewModel viewModel)
+    public MainPage(MainViewModel viewModel, ComparePage comparePage, SymbolsPage symbolsPage)
     {
         InitializeComponent();
 
         this.viewModel = viewModel;
+        this.comparePage = comparePage;
+        this.symbolsPage = symbolsPage;
         BindingContext = viewModel;
 
-        TreeMapView.Drawable = drawable;
+        NavigationPage.SetHasNavigationBar(this, false);
 
-        viewModel.TreeChanged += OnTreeChanged;
-        viewModel.HighlightChanged += OnHighlightChanged;
+        treeMap = new TreeMapController(TreeMapView) { TooltipLines = BuildTooltipLines };
+        treeMap.Selected += (_, node) => viewModel.SelectedNode = node;
+        treeMap.ZoomRequested += (_, node) => viewModel.ZoomInto(node);
+        treeMap.HoverChanged += (_, node) => viewModel.HoveredNode = node;
+
+        viewModel.TreeChanged += (_, _) => treeMap.Root = viewModel.DisplayRoot;
+        viewModel.HighlightChanged += (_, _) => treeMap.SetHighlight(viewModel.SelectedNode, viewModel.HoveredNode);
     }
 
     protected override void OnAppearing()
@@ -56,83 +64,34 @@ public partial class MainPage : ContentPage
     /// <summary>コマンドライン等から渡されたファイルを開く。</summary>
     public Task LoadAsync(string path) => viewModel.LoadAsync(path);
 
-    private void OnRequestedThemeChanged(object? sender, AppThemeChangedEventArgs e)
+    private async void OnCompareClicked(object? sender, EventArgs e)
     {
-        ApplyTheme();
-        TreeMapView.Invalidate();
+        await Navigation.PushAsync(comparePage);
+
+        // 単一表示で開いていたライブラリをそのまま比較元にする。
+        await comparePage.EnsureBaselineAsync(viewModel.Library?.FilePath);
     }
+
+    private async void OnSymbolsClicked(object? sender, EventArgs e)
+    {
+        await Navigation.PushAsync(symbolsPage);
+
+        // 単一表示で開いていたライブラリのシンボルを読む。
+        await symbolsPage.EnsureLoadedAsync(viewModel.Library?.FilePath);
+    }
+
+    private void OnRequestedThemeChanged(object? sender, AppThemeChangedEventArgs e) => ApplyTheme();
 
     private void ApplyTheme() =>
-        drawable.IsDarkTheme = (Application.Current?.RequestedTheme ?? AppTheme.Light) == AppTheme.Dark;
+        treeMap.ApplyTheme((Application.Current?.RequestedTheme ?? AppTheme.Light) == AppTheme.Dark);
 
-    private void OnTreeChanged(object? sender, EventArgs e)
-    {
-        drawable.Root = viewModel.DisplayRoot;
-        drawable.SelectedNode = null;
-        drawable.HoveredNode = null;
-        HideTooltip();
-        TreeMapView.Invalidate();
-    }
+    private void OnTapped(object? sender, TappedEventArgs e) => treeMap.OnTapped(e.GetPosition(TreeMapView));
 
-    private void OnHighlightChanged(object? sender, EventArgs e)
-    {
-        drawable.SelectedNode = viewModel.SelectedNode;
-        drawable.HoveredNode = viewModel.HoveredNode;
-        TreeMapView.Invalidate();
-    }
+    private void OnDoubleTapped(object? sender, TappedEventArgs e) => treeMap.OnDoubleTapped(e.GetPosition(TreeMapView));
 
-    private void OnTapped(object? sender, TappedEventArgs e)
-    {
-        if (HitTest(e.GetPosition(TreeMapView)) is { } tile)
-        {
-            viewModel.SelectedNode = tile.Node;
-        }
-    }
+    private void OnPointerMoved(object? sender, PointerEventArgs e) => treeMap.OnPointerMoved(e.GetPosition(TreeMapView));
 
-    private void OnDoubleTapped(object? sender, TappedEventArgs e)
-    {
-        if (HitTest(e.GetPosition(TreeMapView)) is not { } tile)
-        {
-            return;
-        }
-
-        // 末端をダブルクリックしたときは 1 つ上のまとまりへズームする。
-        viewModel.ZoomInto(tile.Node.IsLeaf ? tile.Node.Parent ?? tile.Node : tile.Node);
-    }
-
-    private void OnPointerMoved(object? sender, PointerEventArgs e)
-    {
-        Point? position = e.GetPosition(TreeMapView);
-        TreeMapTile? tile = HitTest(position);
-
-        if (tile is null || position is not { } point)
-        {
-            viewModel.HoveredNode = null;
-            HideTooltip();
-            return;
-        }
-
-        drawable.HoverPoint = new PointF((float)point.X, (float)point.Y);
-        drawable.HoverLines = BuildTooltipLines(tile.Node);
-
-        // ホバー先が変わったときは HighlightChanged 経由で再描画されるので、二重に呼ばない。
-        bool hoverChanged = !ReferenceEquals(viewModel.HoveredNode, tile.Node);
-        viewModel.HoveredNode = tile.Node;
-
-        if (!hoverChanged)
-        {
-            TreeMapView.Invalidate();
-        }
-    }
-
-    private void OnPointerExited(object? sender, PointerEventArgs e)
-    {
-        viewModel.HoveredNode = null;
-        HideTooltip();
-    }
-
-    private TreeMapTile? HitTest(Point? position) =>
-        position is { } point ? drawable.Layout.HitTest(point.X, point.Y) : null;
+    private void OnPointerExited(object? sender, PointerEventArgs e) => treeMap.OnPointerExited();
 
     private IReadOnlyList<string> BuildTooltipLines(TreeNode node)
     {
@@ -160,18 +119,6 @@ public partial class MainPage : ContentPage
         }
 
         return lines;
-    }
-
-    private void HideTooltip()
-    {
-        if (drawable.HoverPoint is null && drawable.HoverLines is null)
-        {
-            return;
-        }
-
-        drawable.HoverPoint = null;
-        drawable.HoverLines = null;
-        TreeMapView.Invalidate();
     }
 
     private async void OnFilterTextChanged(object? sender, TextChangedEventArgs e)

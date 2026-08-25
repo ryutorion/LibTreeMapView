@@ -22,6 +22,11 @@ public static class MauiProgram
         builder.Services.AddSingleton(LibraryCache.Default);
         builder.Services.AddSingleton(services => new LibraryLoader(services.GetRequiredService<LibraryCache>()));
         builder.Services.AddSingleton<MainViewModel>();
+        builder.Services.AddSingleton<CompareViewModel>();
+        builder.Services.AddSingleton<ComparePage>();
+        builder.Services.AddSingleton<SymbolAnalyzerService>();
+        builder.Services.AddSingleton<SymbolsViewModel>();
+        builder.Services.AddSingleton<SymbolsPage>();
         builder.Services.AddSingleton<MainPage>();
 
 #if DEBUG

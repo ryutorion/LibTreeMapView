@@ -59,6 +59,43 @@ dotnet run --project src/LibTreeMapView -f net10.0-windows10.0.19041.0
 dotnet run --project src/LibTreeMapView -f net10.0-windows10.0.19041.0 -- C:\path\to\your.lib
 ```
 
+### 発行 (配布用のビルド)
+
+`publish.cmd` を実行すると、そのまま配布できる形で `publish\win-x64` に出力します。
+
+```bash
+publish.cmd
+```
+
+.NET ランタイムと Windows App SDK を同梱するので、**何もインストールしていない Windows でも
+フォルダーごと渡せば実行できます** (230 MB / 569 ファイル)。
+
+受け取る側に .NET 10 ランタイムがある場合は、同梱しない小さい方を使えます (124 MB)。
+
+```bash
+publish.cmd framework
+```
+
+Visual Studio から発行する場合は、プロジェクトを右クリック → 発行 で
+`win-x64` / `win-x64-framework` のプロファイルを選びます。
+コマンドラインで直接指定することもできます。
+
+```bash
+dotnet publish src/LibTreeMapView -f net10.0-windows10.0.19041.0 -p:PublishProfile=win-x64
+```
+
+発行時は `PublishReadyToRun` を有効にしているため、起動直後の初回表示が Debug ビルドより速くなります。
+同じライブラリ (24 MB / 48,638 セクション) を起動直後に 1 回開いたときの「表示の組み立て」は
+**Debug 227 ms → 発行版 42 ms** でした (JIT の暖機が減るため)。
+配布用に固めるときはフォルダーを ZIP にしてください。
+
+```bash
+powershell -Command "Compress-Archive -Path publish\win-x64\* -DestinationPath LibTreeMapView.zip -Force"
+```
+
+MSIX パッケージではなく、そのまま実行できる形 (アンパッケージ) で出力します
+(`WindowsPackageType=None`)。
+
 ### 試すためのサンプル
 
 `samples/build-samples.cmd` を実行すると、MSVC で `samples/out/sample.lib`（通常の静的ライブラリ）と
@@ -197,6 +234,7 @@ src/LibTreeMapView.Core/    UI に依存しない解析ロジック (netstandard
   Tree/TreeBuilder.cs         階層の組み立て (グループ化・フィルター)
   Layout/TreeMapLayout.cs     squarified treemap の配置計算とヒットテスト
 src/LibTreeMapView/         MAUI アプリ (Windows)
+  Properties/PublishProfiles/ 発行プロファイル (自己完結 / ランタイム依存)
   ViewModels/MainViewModel.cs 画面の状態とコマンド
   ViewModels/CompareViewModel.cs 比較ビューの状態と絞り込み
   ViewModels/SymbolsViewModel.cs シンボルビューの状態
